@@ -1,0 +1,24 @@
+# Python 缓存 / 构建产物
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Claude Code 本地配置
+.claude/
+
+# 知识库持久化数据（ChromaKB 落盘目录）
+chroma_data/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

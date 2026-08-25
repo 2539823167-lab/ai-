@@ -1,0 +1,13 @@
+# 核心功能零第三方依赖，仅需 Python 3.10 标准库：
+#   tkinter / urllib / json / threading / queue / dataclasses / random / time
+
+# 可选：语义检索（启用 ChromaKB 时安装；默认用 SimpleKB 无需安装）
+# chromadb>=0.4.0
+# 向量模型（本地免费，Ollama embedding 时）：ollama pull bge-m3
+
+# 可选：解析 PDF（知识库添加 PDF 文档时安装；txt/md 无需）
+# pypdf>=3.0.0
+
+# 可选：抖音真实弹幕（danmaku.provider = "douyin" 时安装）
+#   requests / websocket-client / py-mini-racer / betterproto
+# 集中声明在 requirements-douyin.txt，安装：py -3.10 -m pip install -r requirements-douyin.txt

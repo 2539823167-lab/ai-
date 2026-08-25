@@ -1,0 +1,17 @@
+{
+  "danmaku": { "provider": "mock", "mock_interval": 2.0, "live_url": "", "room_id": "" },
+  "aggregate": { "count": 5, "seconds": 20 },
+  "ai": {
+    "local": { "enabled": true, "base_url": "http://localhost:11434", "model": "qwen3:4b" },
+    "cloud": { "enabled": true, "api_key": "", "base_url": "https://api.deepseek.com", "model": "deepseek-chat" }
+  },
+  "budget": { "max_calls": 50, "max_cost": 2.0 },
+  "kb": {
+    "backend": "simple",
+    "collection": "live_kb",
+    "persist_dir": "./chroma_data",
+    "embedding": "ollama",
+    "embedding_url": "http://localhost:11434",
+    "embedding_model": "bge-m3"
+  }
+}

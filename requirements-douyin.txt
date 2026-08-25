@@ -1,0 +1,8 @@
+# 抖音真实弹幕（danmaku.provider = "douyin"）所需依赖
+# 核心功能（mock 弹幕 + 模板回复）不需要这些，仅在接入抖音时安装：
+#   py -3.10 -m pip install -r requirements-douyin.txt
+
+requests
+websocket-client
+py-mini-racer
+betterproto==1.2.5
