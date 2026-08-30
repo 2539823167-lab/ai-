@@ -43,6 +43,7 @@ class Coordinator:
         self._buffer = []               # 当前聚合中的弹幕
         self._recent = deque(maxlen=50)  # 最近弹幕，供话题生成取素材
         self._lock = threading.Lock()   # 弹幕来自后台线程，需加锁
+        self._flush_lock = threading.Lock()  # 同一时刻只处理一批，避免并发调 AI
         self._timer = None              # 定时刷新定时器
         self._local_ok = True           # 本地 AI 可用性缓存（乐观，首次会尝试）
         self._local_retry_at = 0.0      # 下次重试本地 AI 的时间戳
@@ -50,12 +51,52 @@ class Coordinator:
     # ---------- 弹幕入口与聚合 ----------
 
     def on_danmaku(self, event):
-        """弹幕入口：入聚合窗口，同时缓存到最近弹幕，攒够条数立即处理。"""
+        """弹幕入口：入聚合窗口，同时缓存到最近弹幕，攒够条数立即处理。
+
+        注意：AI 调用可能耗时数秒，绝不能在锁内做——否则后续弹幕会全部
+        堵在门外。这里只在锁内更新缓冲，真正的批处理放到锁外进行。
+        """
         with self._lock:
             self._recent.append(event)
             self._buffer.append(event)
-            if len(self._buffer) >= self.max_count:
-                self._flush()
+            should_flush = len(self._buffer) >= self.max_count
+        if should_flush:
+            self.process_buffer()
+
+    def process_buffer(self):
+        """立即取出并处理当前聚合窗口（攒满触发 / 定时器到点 / UI「立即处理」共用）。
+
+        带 _flush_lock：上一批还在等 AI 返回时，本批放回队首等下一轮，
+        既不阻塞弹幕接收，也避免并发调用 AI。
+        """
+        with self._lock:
+            batch = self._buffer
+            self._buffer = []
+        if not batch:
+            return
+        if not self._flush_lock.acquire(blocking=False):
+            with self._lock:
+                self._buffer[:0] = batch
+            return
+        try:
+            self._emit_reply(batch)
+        finally:
+            self._flush_lock.release()
+
+    @property
+    def pending_count(self):
+        """当前聚合窗口里待处理的弹幕条数。"""
+        with self._lock:
+            return len(self._buffer)
+
+    def set_aggregate(self, count=None, seconds=None):
+        """运行时调整聚合窗口（UI 在线调参用），并重启定时器。"""
+        if count is not None and int(count) >= 1:
+            self.max_count = int(count)
+        if seconds is not None and int(seconds) >= 1:
+            self.max_seconds = int(seconds)
+        self.stop()
+        self.start()
 
     def start(self):
         """启动聚合定时器。"""
@@ -75,17 +116,13 @@ class Coordinator:
 
     def _on_timeout(self):
         """到点仍未攒满条数，也把已有弹幕处理掉。"""
-        with self._lock:
-            if self._buffer:
-                self._flush()
+        self.process_buffer()
         self._schedule()
 
     # ---------- 三级阶梯 ----------
 
-    def _flush(self):
-        """处理当前聚合的一批弹幕。"""
-        batch = self._buffer
-        self._buffer = []
+    def _emit_reply(self, batch):
+        """处理一批弹幕：三级阶梯依次尝试，产出建议发布到 EventBus。"""
         # 敏感词过滤后再进入 AI / 模板判断
         contents = [self.sensitive.filter_text(e.content) for e in batch]
 

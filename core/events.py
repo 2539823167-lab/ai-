@@ -17,6 +17,7 @@ class DanmakuEvent:
     user: str              # 用户名
     content: str           # 弹幕内容
     timestamp: float       # 时间戳（time.time()）
+    manual: bool = False   # 是否为面板手动发送的弹幕（UI 高亮区分用）
 
 
 @dataclass
