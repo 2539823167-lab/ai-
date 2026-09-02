@@ -5,13 +5,16 @@
 import json
 import urllib.request
 
+from core.httputil import normalize_localhost
+
 
 class CloudAI:
     def __init__(self, api_key, model="deepseek-chat",
                  base_url="https://api.deepseek.com", timeout=60.0):
         self.api_key = api_key
         self.model = model
-        self.base_url = base_url.rstrip("/")
+        # 兼容自建代理把地址配成 localhost 的情况（规范化后再拼接接口路径）
+        self.base_url = normalize_localhost(base_url).rstrip("/")
         self.timeout = timeout
 
     def chat(self, messages):

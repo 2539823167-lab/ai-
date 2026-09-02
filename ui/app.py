@@ -99,9 +99,11 @@ class App(tk.Tk):
                                     command=self._toggle_pause)
         self.pause_btn.pack(side="right", padx=(12, 0))
         self.dot_cloud = StatusDot(right, "云端")
-        cloud_on = self.coordinator.cloud_ai is not None
-        self.dot_cloud.set_state(cloud_on,
-                                 "云端已配置" if cloud_on else "云端未配置")
+        if self.coordinator.cloud_ai is not None:
+            self.dot_cloud.set_state(True, "云端已配置")
+        else:
+            # 未配置 ≠ 故障：用灰色（未知）而非红色，避免误导
+            self.dot_cloud.set_state(None, "云端未配置")
         self.dot_cloud.pack(side="right", padx=(12, 0))
         self.dot_ollama = StatusDot(right, "Ollama 检测中…")
         self.dot_ollama.pack(side="right", padx=(12, 0))
@@ -210,20 +212,32 @@ class App(tk.Tk):
 
     # ---------- 实时交互动作 ----------
 
+    def _run_bg(self, fn):
+        """把耗时的业务动作放到后台线程执行，避免阻塞 UI 主线程。
+
+        AI 请求（本地/云端）可能耗时数秒，若在按钮回调里同步执行，
+        界面会整个卡住。跑完后结果仍走 EventBus → after(0,...) 回主线程，
+        这里只负责“别在 UI 线程里等”。
+        """
+        threading.Thread(target=fn, daemon=True).start()
+
     def _send_manual(self, content):
         """手动发送弹幕：进入与真实弹幕完全相同的处理管线。"""
         event = DanmakuEvent(user="演示观众", content=content,
                              timestamp=time.time(), manual=True)
-        self.event_bus.publish(EVT_DANMAKU, event)
-        self.coordinator.on_danmaku(event)
+        self.event_bus.publish(EVT_DANMAKU, event)      # 主线程先上屏
+        # 处理管线放后台：可能触发聚合 + AI 请求，不能在 UI 线程里等
+        self._run_bg(lambda: self.coordinator.on_danmaku(event))
         self._set_status("已发送手动弹幕，进入实时处理管线")
 
     def _flush_now(self):
-        """⚡ 立即处理：不等聚合窗口攒满，马上出建议。"""
+        """⚡ 立即处理：不等聚合窗口攒满，马上出建议（后台执行不卡 UI）。"""
         n = self.coordinator.pending_count
-        self.coordinator.process_buffer()
-        self._set_status(f"已立即处理 {n} 条待处理弹幕" if n
-                         else "当前没有待处理弹幕")
+        self._run_bg(self.coordinator.process_buffer)
+        self._set_status(
+            f"正在立即处理 {n} 条待处理弹幕…" if n
+            else "当前没有待处理弹幕"
+        )
 
     def _set_aggregate(self, count, seconds):
         """聚合窗口在线调节，改完即生效。"""
@@ -329,7 +343,7 @@ class App(tk.Tk):
             topic = self.coordinator.generate_topic()
             self.after(0, self._show_topic, topic)
 
-        threading.Thread(target=work, daemon=True).start()
+        self._run_bg(work)
 
     def _show_topic(self, topic):
         if topic:

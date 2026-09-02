@@ -9,8 +9,9 @@ dist/
 # Claude Code 本地配置
 .claude/
 
-# 知识库持久化数据（ChromaKB 落盘目录）
+# 知识库持久化数据（ChromaKB 落盘目录 / SimpleKB JSON）
 chroma_data/
+kb_data/
 
 # 虚拟环境
 venv/
@@ -22,3 +23,8 @@ env/
 Thumbs.db
 .idea/
 .vscode/
+
+# 个人隐私文件（简历 / 证件照，勿上传公开仓库）
+张怡康-*.pdf
+证件照.png
+*.简历.pdf

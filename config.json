@@ -3,7 +3,7 @@
   "aggregate": { "count": 5, "seconds": 20 },
   "ai": {
     "local": { "enabled": true, "base_url": "http://localhost:11434", "model": "qwen3:4b" },
-    "cloud": { "enabled": true, "api_key": "", "base_url": "https://api.deepseek.com", "model": "deepseek-chat" }
+    "cloud": { "enabled": false, "api_key": "", "base_url": "https://api.deepseek.com", "model": "deepseek-chat" }
   },
   "budget": { "max_calls": 50, "max_cost": 2.0 },
   "kb": {

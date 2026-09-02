@@ -6,10 +6,14 @@
 import json
 import urllib.request
 
+from core.httputil import normalize_localhost
+
 
 class LocalAI:
     def __init__(self, base_url="http://localhost:11434", model="qwen3:4b", timeout=60.0):
-        self.base_url = base_url.rstrip("/")
+        # localhost → 127.0.0.1：规避 Windows 上 IPv6 优先导致的连接等待，
+        # 服务未启动时能更快失败并降级（见 core/httputil.py）
+        self.base_url = normalize_localhost(base_url).rstrip("/")
         self.model = model
         self.timeout = timeout
 

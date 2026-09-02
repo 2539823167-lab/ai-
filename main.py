@@ -15,10 +15,13 @@ from danmaku.mock import MockProvider
 from kb.store import SimpleKB
 from rules import sensitive, templates
 
+# 项目根目录（config.json / 数据目录都相对它定位，与运行 cwd 无关）
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 
 def load_config():
     """读取 config.json。"""
-    path = os.path.join(os.path.dirname(__file__), "config.json")
+    path = os.path.join(PROJECT_ROOT, "config.json")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -45,7 +48,10 @@ def build_ai(config):
 
 
 def build_kb(config):
-    """按配置装配知识库，默认 SimpleKB；backend=chroma 时启用语义检索。"""
+    """按配置装配知识库，默认 SimpleKB；backend=chroma 时启用语义检索。
+
+    SimpleKB 默认把条目持久化到 kb_data/simple_kb.json（零依赖，重启不丢）。
+    """
     kb_cfg = config.get("kb", {})
     if kb_cfg.get("backend") == "chroma":
         from kb.store import ChromaKB
@@ -56,15 +62,12 @@ def build_kb(config):
             embedding_url=kb_cfg.get("embedding_url", "http://localhost:11434"),
             embedding_model=kb_cfg.get("embedding_model", "bge-m3"),
         )
-    return SimpleKB()
+    persist_path = os.path.join(PROJECT_ROOT, "kb_data", "simple_kb.json")
+    return SimpleKB(persist_path=persist_path)
 
 
 def build_provider(config, on_danmaku):
-    """按配置装配弹幕源：mock（默认）或 douyin（接入脚手架）。
-
-    douyin 目前是脚手架（签名 / WebSocket / protobuf 待接入），
-    切换后需按《danmaku/抖音接入说明.md》补全才能真正抓到弹幕。
-    """
+    """按配置装配弹幕源：mock（默认）或 douyin（真实接入）。"""
     provider_cfg = config.get("danmaku", {})
     name = provider_cfg.get("provider", "mock")
     if name == "douyin":

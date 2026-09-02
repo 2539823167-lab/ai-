@@ -2,11 +2,17 @@
 
 默认用 SimpleKB（子串匹配 + 简单打分），零第三方依赖、学习友好；
 需要语义检索时再装 chromadb，走 ChromaKB（bge-m3 向量模型）。
+
+SimpleKB 可把条目持久化到本地 JSON 文件（重启不丢），零额外依赖；
+默认不持久化（纯内存），需要时传 persist_path 即可。
 """
 import json
+import os
 import urllib.request
 import uuid
 from abc import ABC, abstractmethod
+
+from core.httputil import normalize_localhost
 
 
 class KBStore(ABC):
@@ -30,14 +36,22 @@ class KBStore(ABC):
 
 
 class SimpleKB(KBStore):
-    """零依赖实现：子串命中计分，适合小数据量演示。"""
+    """零依赖实现：子串命中计分，适合小数据量演示。
 
-    def __init__(self):
+    可选 JSON 文件持久化：传入 persist_path 后，每次增删自动落盘，
+    重启程序知识不丢失（零依赖，仅标准库 json）。
+    """
+
+    def __init__(self, persist_path=None):
         self._items = {}  # id -> {"id", "text", "meta"}
+        self._persist_path = persist_path
+        if persist_path:
+            self._load()
 
     def add(self, text, meta=None):
         item_id = uuid.uuid4().hex
         self._items[item_id] = {"id": item_id, "text": text, "meta": meta or {}}
+        self._save()
         return item_id
 
     def search(self, query, top_k=3):
@@ -57,10 +71,40 @@ class SimpleKB(KBStore):
         return sum(0.5 for ch in query if ch in text)
 
     def delete(self, item_id):
-        self._items.pop(item_id, None)
+        if self._items.pop(item_id, None) is not None:
+            self._save()
 
     def list_all(self):
         return list(self._items.values())
+
+    # ---------- 持久化（可选） ----------
+
+    def _load(self):
+        """启动时从 JSON 文件读回条目；文件不存在或损坏时用空库并提示。"""
+        try:
+            with open(self._persist_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self._items = data if isinstance(data, dict) else {}
+        except FileNotFoundError:
+            self._items = {}
+        except Exception as e:
+            self._items = {}
+            print(f"[SimpleKB] 读取持久化文件失败，已用空知识库启动：{e}")
+
+    def _save(self):
+        """把条目原子写回 JSON 文件（先写临时文件再替换，避免写一半损坏）。"""
+        if not self._persist_path:
+            return
+        try:
+            parent = os.path.dirname(self._persist_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            tmp = self._persist_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self._items, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, self._persist_path)
+        except Exception as e:
+            print(f"[SimpleKB] 写入持久化文件失败：{e}")
 
 
 class OllamaEmbeddingFunction:
@@ -72,7 +116,8 @@ class OllamaEmbeddingFunction:
     """
 
     def __init__(self, base_url="http://localhost:11434", model="bge-m3"):
-        self.url = f"{base_url.rstrip('/')}/api/embeddings"
+        # localhost → 127.0.0.1：服务未启动时快速失败，避免 IPv6 优先的等待
+        self.url = f"{normalize_localhost(base_url).rstrip('/')}/api/embeddings"
         self.model = model
 
     def name(self):
@@ -142,6 +187,7 @@ class ChromaKB(KBStore):
         res = self._collection.query(query_texts=[query], n_results=top_k)
         ids = res.get("ids", [[]])[0]
         docs = res.get("documents", [[]])[0]
+        metas = res.get("metadatas", [[]])[0] or [None] * len(ids)
         dists = res.get("distances", [[]])[0]
 
         out = []
@@ -149,7 +195,12 @@ class ChromaKB(KBStore):
             distance = dists[i] if i < len(dists) else 0.0
             # 距离越小越相似，映射到 (0, 1]，分数越大越相关
             score = 1.0 / (1.0 + distance)
-            out.append({"id": item_id, "text": docs[i], "score": round(score, 3)})
+            out.append({
+                "id": item_id,
+                "text": docs[i],
+                "meta": metas[i] or {},
+                "score": round(score, 3),
+            })
         return out
 
     def delete(self, item_id):
@@ -157,7 +208,10 @@ class ChromaKB(KBStore):
 
     def list_all(self):
         res = self._collection.get()
+        ids = res.get("ids", [])
+        docs = res.get("documents", [])
+        metas = res.get("metadatas", []) or [None] * len(ids)
         return [
-            {"id": i, "text": d}
-            for i, d in zip(res.get("ids", []), res.get("documents", []))
+            {"id": i, "text": d, "meta": m or {}}
+            for i, d, m in zip(ids, docs, metas)
         ]

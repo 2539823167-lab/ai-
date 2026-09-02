@@ -13,7 +13,7 @@
 - **实时交互**：手动发送弹幕、⚡立即处理、弹幕源暂停/继续、聚合窗口在线调节、一键采纳上屏
 - **提词器**：台本编辑 + 字号调节 + 自动滚动（可调速）+ 话题生成入口
 - **话题生成**：基于近期弹幕 + 知识库生成聊天话题
-- **知识库管理**：增删条目 + 文档/PDF 导入 + 关键词 / 语义检索 + 双击复制
+- **知识库管理**：增删条目 + 文档/PDF 导入 + 关键词 / 语义检索 + 双击复制，**条目自动持久化（重启不丢）**
 - **驾驶舱视图**：统计卡（弹幕数 / 回复数 / 模板命中率 / 云端花费）+ 状态灯（弹幕源 / Ollama / 云端）+ 运行日志（三级阶梯实时走向）
 
 ## 实时交互说明
@@ -39,7 +39,19 @@ py -3.10 main.py
 ```
 
 **无 key / 无 Ollama 也能跑通**：模拟弹幕持续刷出，高频弹幕（问价格、
-求关注等）命中模板直接回复。无需安装任何第三方包。
+求关注、道谢、下单等）命中模板直接回复。无需安装任何第三方包。
+
+## 测试
+
+内置一套**纯标准库**回归测试（`unittest`，不联网、不依赖 Ollama/DeepSeek），
+覆盖模板匹配、敏感词、预算器、知识库检索与持久化、文档分块、
+Coordinator 三级阶梯 / 聚合窗口 / 优雅降级等核心逻辑：
+
+```bash
+py -3.10 -m unittest discover -s tests -t . -v
+```
+
+改动核心逻辑后跑一遍即可确认没有破坏既有行为。
 
 ## 三级省 token 阶梯
 
@@ -71,7 +83,8 @@ ollama pull qwen3:4b
 
 ### 云端回复（L3）
 
-设 config.json 里 `ai.cloud.enabled` 为 `true`，并设置 DeepSeek API key（推荐用环境变量，避免明文写进配置文件）：
+默认不启用（`ai.cloud.enabled = false`）。开启并把 config.json 里
+`ai.cloud.enabled` 置为 `true`，并设置 DeepSeek API key（推荐用环境变量，避免明文写进配置文件）：
 
 ```bash
 # PowerShell
@@ -127,7 +140,7 @@ py -3.10 -m pip install -r requirements-douyin.txt
   "aggregate": { "count": 5, "seconds": 20 },
   "ai": {
     "local":  { "enabled": true,  "base_url": "http://localhost:11434", "model": "qwen3:4b" },
-    "cloud":  { "enabled": true, "api_key": "", "base_url": "https://api.deepseek.com", "model": "deepseek-chat" }
+    "cloud":  { "enabled": false, "api_key": "", "base_url": "https://api.deepseek.com", "model": "deepseek-chat" }
   },
   "budget": { "max_calls": 50, "max_cost": 2.0 },
   "kb": {
@@ -158,16 +171,18 @@ py -3.10 -m pip install -r requirements-douyin.txt
 ├── config.json                 # 配置文件
 ├── requirements.txt            # 依赖（核心零依赖，chromadb / pypdf 可选）
 ├── requirements-douyin.txt     # 抖音真实弹幕可选依赖（requests / websocket-client / py-mini-racer / betterproto）
-├── core/                       # 协调层：事件总线、预算器、协调器
+├── tests/                      # 纯标准库回归测试（unittest，不联网）
+├── core/                       # 协调层：事件总线、预算器、协调器、HTTP 工具
 ├── danmaku/                    # 弹幕源：抽象 + 模拟 + 抖音真实接入
 │   └── douyin_protocol/        # 抖音签名与协议（移植自 DouyinLiveWebFetcher，AGPL-3.0）
 ├── ai/                         # AI 引擎：prompt + 本地 Ollama + 云端 DeepSeek
 ├── kb/                         # 知识库：SimpleKB + ChromaKB 语义检索 + 文档加载器
+│   └── kb_data/                # SimpleKB 条目持久化文件（自动生成，可删除重建）
 ├── rules/                      # 规则：L1 模板、敏感词
 └── ui/                         # 界面：主题 + 主窗口 + 各面板
 ```
 
-详细设计见 [方案.md](方案.md)。
+产品需求文档见 [PRD-AI直播助手.md](PRD-AI直播助手.md)，详细技术设计见 [方案.md](方案.md)。
 
 ## 免责声明
 
